@@ -2,6 +2,12 @@
 
 A comprehensive MERN stack application for managing food delivery logistics with separate dashboards for restaurants, riders, and administrators.
 
+## video-Rec
+
+
+[Screencast from 2025-06-01 12-08-22.webm](https://github.com/user-attachments/assets/0ef9098c-8840-4439-adab-478c40186c88)
+
+
 ## Features
 
 ### 🔐 Authentication System
