@@ -1,6 +1,7 @@
 "use client"
 
 import React from "react"
+import toast, { Toaster } from 'react-hot-toast'
 
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -106,11 +107,11 @@ export default function HomePage() {
           setCurrentView("admin-dashboard")
         }
       } else {
-        alert(data.message || "Registration failed")
+        toast.error(data.message || "Registration failed")
       }
     } catch (error) {
       console.error("Registration error:", error)
-      alert("Registration failed. Please try again.")
+      toast.error("Registration failed. Please try again.")
     }
   }
 
@@ -145,11 +146,11 @@ export default function HomePage() {
           setCurrentView("admin-dashboard")
         }
       } else {
-        alert(data.message || "Login failed")
+        toast.error(data.message || "Login failed")
       }
     } catch (error) {
       console.error("Login error:", error)
-      alert("Login failed. Please try again.")
+      toast.error("Login failed. Please try again.")
     }
   }
 
@@ -590,6 +591,7 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+      <Toaster position="bottom-right" />
     </div>
   )
 }
@@ -694,22 +696,22 @@ function RestaurantDashboard() {
         data = JSON.parse(text)
       } catch (e) {
         console.error("Server returned non-JSON response:", text)
-        alert("Server error. Please try again.")
+        toast.error("Server error. Please try again.")
         return
       }
 
       if (!response.ok) {
         console.error("API Error:", data.message || "Failed to add order")
-        alert(data.message || "Failed to add order. Please try again.")
+        toast.error(data.message || "Failed to add order. Please try again.")
         return
       }
 
       setNewOrder({ orderId: "", items: "", prepTime: "" })
       fetchOrders()
-      alert("Order added successfully!")
+      toast.success("Order added successfully!")
     } catch (error) {
       console.error("Error adding order:", error)
-      alert("Failed to add order. Please try again.")
+      toast.error("Failed to add order. Please try again.")
     }
   }
 
@@ -732,22 +734,22 @@ function RestaurantDashboard() {
         data = JSON.parse(text)
       } catch (e) {
         console.error("Server returned non-JSON response:", text)
-        alert("Server error. Please try again.")
+        toast.error("Server error. Please try again.")
         return
       }
 
       if (!response.ok) {
         console.error("API Error:", data.message || "Failed to assign rider")
-        alert(data.message || "Failed to assign rider. Please try again.")
+        toast.error(data.message || "Failed to assign rider. Please try again.")
         return
       }
 
       fetchOrders()
       fetchAvailableRiders()
-      alert("Rider assigned successfully!")
+      toast.success("Rider assigned successfully!")
     } catch (error) {
       console.error("Error assigning rider:", error)
-      alert("Failed to assign rider. Please try again.")
+      toast.error("Failed to assign rider. Please try again.")
     }
   }
 
@@ -1046,13 +1048,13 @@ function RiderDashboard() {
         data = JSON.parse(text)
       } catch (e) {
         console.error("Server returned non-JSON response:", text)
-        alert("Server error. Please try again.")
+        toast.error("Server error. Please try again.")
         return
       }
 
       if (!response.ok) {
         console.error("API Error:", data.message || "Failed to update order status")
-        alert(data.message || "Failed to update order status. Please try again.")
+        toast.error(data.message || "Failed to update order status. Please try again.")
         return
       }
 
@@ -1062,10 +1064,10 @@ function RiderDashboard() {
       } else {
         fetchAssignedOrder()
       }
-      alert(`Order status updated to ${newStatus}`)
+      toast.success(`Order status updated to ${newStatus}`)
     } catch (error) {
       console.error("Error updating order status:", error)
-      alert("Failed to update order status. Please try again.")
+      toast.error("Failed to update order status. Please try again.")
     }
   }
 

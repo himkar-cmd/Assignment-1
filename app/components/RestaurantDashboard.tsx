@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import toast, { Toaster } from 'react-hot-toast'
 
 const RestaurantDashboard = () => {
   const [orders, setOrders] = useState([])
@@ -26,6 +27,7 @@ const RestaurantDashboard = () => {
       setOrders(data)
     } catch (error) {
       console.error('Error fetching orders:', error)
+      toast.error('Failed to fetch orders')
     }
   }
 
@@ -40,6 +42,7 @@ const RestaurantDashboard = () => {
       setAvailableRiders(data)
     } catch (error) {
       console.error('Error fetching riders:', error)
+      toast.error('Failed to fetch available riders')
     }
   }
 
@@ -48,7 +51,7 @@ const RestaurantDashboard = () => {
 
     // Validate form fields
     if (!newOrder.orderId || !newOrder.items || !newOrder.prepTime) {
-      alert('Please fill in all order details')
+      toast.error('Please fill in all order details')
       return
     }
 
@@ -74,9 +77,10 @@ const RestaurantDashboard = () => {
 
       setOrders([...orders, data.order])
       setNewOrder({ orderId: '', items: '', prepTime: '' })
+      toast.success('Order created successfully')
     } catch (error) {
       console.error("Error creating order:", error)
-      alert(error instanceof Error ? error.message : "Failed to create order. Please try again.")
+      toast.error(error instanceof Error ? error.message : "Failed to create order. Please try again.")
     }
   }
 
@@ -106,14 +110,37 @@ const RestaurantDashboard = () => {
 
       // Close the modal
       setSelectedOrder(null)
+      toast.success('Rider assigned successfully')
     } catch (error) {
       console.error("Error assigning rider:", error)
-      alert(error instanceof Error ? error.message : "Failed to assign rider. Please try again.")
+      toast.error(error instanceof Error ? error.message : "Failed to assign rider. Please try again.")
     }
   }
 
   return (
     <div className="p-4">
+      <Toaster
+        position="bottom-right"
+        toastOptions={{
+          duration: 3000,
+          style: {
+            background: '#333',
+            color: '#fff',
+          },
+          success: {
+            duration: 3000,
+            theme: {
+              primary: '#4aed88',
+            },
+          },
+          error: {
+            duration: 4000,
+            theme: {
+              primary: '#ff4b4b',
+            },
+          },
+        }}
+      />
       <div className="mb-8">
         <h2 className="text-xl font-bold mb-4">Create New Order</h2>
         <form onSubmit={handleCreateOrder} className="space-y-4">

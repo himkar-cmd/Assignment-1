@@ -93,8 +93,7 @@ const orderSchema = new mongoose.Schema({
   restaurant: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant", required: true },
   assignedRider: { type: mongoose.Schema.Types.ObjectId, ref: "Rider", default: null },
   dispatchTime: Date,
-  createdAt: { type: Date, default: Date.now },
-})
+}, { timestamps: true })
 
 // Models
 const User = mongoose.model("User", userSchema)
@@ -562,6 +561,34 @@ app.get("/api/admin/stats", authenticateToken, async (req, res) => {
     })
   } catch (error) {
     console.error("Get admin stats error:", error)
+    res.status(500).json({ message: "Server error" })
+  }
+})
+
+// Get Rider's Completed Rides
+app.get("/api/riders/:riderId/completed-rides", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "rider") {
+      return res.status(403).json({ message: "Access denied" })
+    }
+
+    const { riderId } = req.params
+
+    // Find rider
+    const rider = await Rider.findOne({ user: riderId })
+    if (!rider) {
+      return res.status(404).json({ message: "Rider not found" })
+    }
+
+    // Find completed orders for this rider
+    const completedOrders = await Order.find({
+      assignedRider: rider._id,
+      status: "DELIVERED"
+    }).populate("restaurant", "restaurantName").sort({ updatedAt: -1 })
+
+    res.json(completedOrders)
+  } catch (error) {
+    console.error("Get completed rides error:", error)
     res.status(500).json({ message: "Server error" })
   }
 })
