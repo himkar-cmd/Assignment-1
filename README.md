@@ -69,6 +69,11 @@ A comprehensive MERN stack application for managing food delivery logistics with
 cd backend
 \`\`\`
 
+Please add .env file which contain 
+PORT="Your_Port"
+MONGODB_URI="Your_Mongo_URI"
+JWT_SECRET=="Secrets"
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY="PUBLIC_API_KEY"
 2. **Install dependencies**:
 \`\`\`bash
 npm install

@@ -3,13 +3,50 @@ const mongoose = require("mongoose")
 const cors = require("cors")
 const bcrypt = require("bcryptjs")
 const jwt = require("jsonwebtoken")
+const { createServer } = require("http")
+const { Server } = require("socket.io")
 require("dotenv").config();
 
 const app = express()
+const httpServer = createServer(app)
+const io = new Server(httpServer, {
+  cors: {
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST", "PUT"],
+    credentials: true
+  }
+})
 
 // Middleware
 app.use(cors())
 app.use(express.json())
+
+// Socket.IO Connection Handler
+io.on("connection", (socket) => {
+  console.log("Client connected:", socket.id)
+
+  // Handle new orders
+  socket.on("newOrder", (order) => {
+    // Broadcast to all connected clients
+    io.emit("orderStatusUpdate", order)
+  })
+
+  // Handle order status updates
+  socket.on("orderStatusUpdate", (order) => {
+    // Broadcast to all connected clients
+    io.emit("orderStatusUpdate", order)
+  })
+
+  // Handle rider assignment
+  socket.on("riderAssigned", (data) => {
+    // Notify specific rider
+    io.emit(`newOrderForRider:${data.riderId}`, data.order)
+  })
+
+  socket.on("disconnect", () => {
+    console.log("Client disconnected:", socket.id)
+  })
+})
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI, {
@@ -285,6 +322,11 @@ app.post("/api/orders", authenticateToken, async (req, res) => {
 
     const { orderId, items, prepTime } = req.body
 
+    // Validate required fields
+    if (!orderId || !items || !prepTime) {
+      return res.status(400).json({ message: "Order ID, items, and prep time are required" })
+    }
+
     // Validate prep time
     if (prepTime < 1 || prepTime > 120) {
       return res.status(400).json({ message: "Prep time must be between 1 and 120 minutes" })
@@ -307,18 +349,24 @@ app.post("/api/orders", authenticateToken, async (req, res) => {
       orderId,
       items,
       prepTime: Number.parseInt(prepTime),
-      restaurant: restaurant._id,
+      restaurant: restaurant._id
     })
 
     await order.save()
 
+    // Emit socket event for new order
+    io.emit("newOrder", order)
+
     res.status(201).json({
       message: "Order created successfully",
-      order,
+      order
     })
   } catch (error) {
     console.error("Create order error:", error)
-    res.status(500).json({ message: "Server error" })
+    res.status(500).json({ 
+      message: "Failed to create order",
+      error: error.message 
+    })
   }
 })
 
@@ -347,6 +395,10 @@ app.put("/api/orders/:orderId/assign", authenticateToken, async (req, res) => {
 
     const { orderId } = req.params
     const { riderId } = req.body
+
+    if (!riderId) {
+      return res.status(400).json({ message: "Rider ID is required" })
+    }
 
     // Find order
     const order = await Order.findById(orderId)
@@ -383,13 +435,24 @@ app.put("/api/orders/:orderId/assign", authenticateToken, async (req, res) => {
     rider.currentOrder = order._id
     await rider.save()
 
+    // Emit socket event for real-time update
+    io.emit("riderAssigned", { orderId, riderId, order })
+
+    // Return the updated order with populated fields
+    const updatedOrder = await Order.findById(orderId)
+      .populate("assignedRider", "name")
+      .populate("restaurant", "restaurantName")
+
     res.json({
       message: "Rider assigned successfully",
-      order,
+      order: updatedOrder
     })
   } catch (error) {
     console.error("Assign rider error:", error)
-    res.status(500).json({ message: "Server error" })
+    res.status(500).json({ 
+      message: "Failed to assign rider",
+      error: error.message 
+    })
   }
 })
 
@@ -451,7 +514,13 @@ app.put("/api/orders/:orderId/status", authenticateToken, async (req, res) => {
 
     // Update order status
     order.status = status
+    if (status === "DELIVERED") {
+      order.dispatchTime = new Date()
+    }
     await order.save()
+
+    // Emit socket event for real-time update
+    io.emit("orderStatusUpdate", order)
 
     // If order is delivered, make rider available
     if (status === "DELIVERED") {
@@ -499,7 +568,7 @@ app.get("/api/admin/stats", authenticateToken, async (req, res) => {
 
 // Start server
 const PORT = process.env.PORT || 5000
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`)
 })
 

@@ -10,10 +10,12 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Store, Bike, Shield, Eye, EyeOff } from "lucide-react"
+import { io, Socket } from "socket.io-client"
 
 export default function HomePage() {
   const [currentView, setCurrentView] = useState("landing")
   const [showPassword, setShowPassword] = useState(false)
+  const [socket, setSocket] = useState<Socket | null>(null)
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -21,6 +23,32 @@ export default function HomePage() {
     restaurantName: "",
     signatureDish: "",
   })
+
+  // Initialize socket connection
+  React.useEffect(() => {
+    const newSocket = io("http://localhost:5000")
+    setSocket(newSocket)
+
+    return () => {
+      newSocket.close()
+    }
+  }, [])
+
+  // Add useEffect to check authentication status on page load
+  React.useEffect(() => {
+    const token = localStorage.getItem("token")
+    const userRole = localStorage.getItem("userRole")
+
+    if (token && userRole) {
+      if (userRole === "manager") {
+        setCurrentView("restaurant-dashboard")
+      } else if (userRole === "rider") {
+        setCurrentView("rider-dashboard")
+      } else if (userRole === "admin") {
+        setCurrentView("admin-dashboard")
+      }
+    }
+  }, [])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -569,6 +597,7 @@ export default function HomePage() {
 function RestaurantDashboard() {
   const [orders, setOrders] = useState([])
   const [riders, setRiders] = useState([])
+  const [completedOrders, setCompletedOrders] = useState([])
   const [newOrder, setNewOrder] = useState({
     orderId: "",
     items: "",
@@ -583,12 +612,32 @@ function RestaurantDashboard() {
           Authorization: `Bearer ${token}`,
         },
       })
-      const data = await response.json()
-      if (response.ok) {
-        setOrders(data)
+      
+      // Check if response is HTML (error page)
+      const text = await response.text()
+      let data
+      try {
+        data = JSON.parse(text)
+      } catch (e) {
+        console.error("Server returned non-JSON response:", text)
+        setOrders([])
+        setCompletedOrders([])
+        return
       }
+      
+      if (!response.ok) {
+        console.error("API Error:", data.message || "Failed to fetch orders")
+        setOrders([])
+        setCompletedOrders([])
+        return
+      }
+      
+      setOrders(data.filter((order: any) => order.status !== "DELIVERED"))
+      setCompletedOrders(data.filter((order: any) => order.status === "DELIVERED"))
     } catch (error) {
       console.error("Error fetching orders:", error)
+      setOrders([])
+      setCompletedOrders([])
     }
   }
 
@@ -600,12 +649,28 @@ function RestaurantDashboard() {
           Authorization: `Bearer ${token}`,
         },
       })
-      const data = await response.json()
-      if (response.ok) {
-        setRiders(data)
+      
+      // Check if response is HTML (error page)
+      const text = await response.text()
+      let data
+      try {
+        data = JSON.parse(text)
+      } catch (e) {
+        console.error("Server returned non-JSON response:", text)
+        setRiders([])
+        return
       }
+      
+      if (!response.ok) {
+        console.error("API Error:", data.message || "Failed to fetch riders")
+        setRiders([])
+        return
+      }
+      
+      setRiders(data)
     } catch (error) {
       console.error("Error fetching riders:", error)
+      setRiders([])
     }
   }
 
@@ -622,13 +687,29 @@ function RestaurantDashboard() {
         body: JSON.stringify(newOrder),
       })
 
-      if (response.ok) {
-        setNewOrder({ orderId: "", items: "", prepTime: "" })
-        fetchOrders()
-        alert("Order added successfully!")
+      // Check if response is HTML (error page)
+      const text = await response.text()
+      let data
+      try {
+        data = JSON.parse(text)
+      } catch (e) {
+        console.error("Server returned non-JSON response:", text)
+        alert("Server error. Please try again.")
+        return
       }
+
+      if (!response.ok) {
+        console.error("API Error:", data.message || "Failed to add order")
+        alert(data.message || "Failed to add order. Please try again.")
+        return
+      }
+
+      setNewOrder({ orderId: "", items: "", prepTime: "" })
+      fetchOrders()
+      alert("Order added successfully!")
     } catch (error) {
       console.error("Error adding order:", error)
+      alert("Failed to add order. Please try again.")
     }
   }
 
@@ -644,13 +725,29 @@ function RestaurantDashboard() {
         body: JSON.stringify({ riderId }),
       })
 
-      if (response.ok) {
-        fetchOrders()
-        fetchAvailableRiders()
-        alert("Rider assigned successfully!")
+      // Check if response is HTML (error page)
+      const text = await response.text()
+      let data
+      try {
+        data = JSON.parse(text)
+      } catch (e) {
+        console.error("Server returned non-JSON response:", text)
+        alert("Server error. Please try again.")
+        return
       }
+
+      if (!response.ok) {
+        console.error("API Error:", data.message || "Failed to assign rider")
+        alert(data.message || "Failed to assign rider. Please try again.")
+        return
+      }
+
+      fetchOrders()
+      fetchAvailableRiders()
+      alert("Rider assigned successfully!")
     } catch (error) {
       console.error("Error assigning rider:", error)
+      alert("Failed to assign rider. Please try again.")
     }
   }
 
@@ -799,7 +896,43 @@ function RestaurantDashboard() {
                     </tbody>
                   </table>
                   {orders.length === 0 && (
-                    <div className="text-center py-8 text-gray-500">No orders yet. Add your first order above.</div>
+                    <div className="text-center py-8 text-gray-500">No active orders. Add your first order above.</div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="mt-8">
+              <CardHeader>
+                <CardTitle>Completed Orders History</CardTitle>
+                <CardDescription>View your past completed orders</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2">Order ID</th>
+                        <th className="text-left py-2">Items</th>
+                        <th className="text-left py-2">Prep Time</th>
+                        <th className="text-left py-2">Rider</th>
+                        <th className="text-left py-2">Completed At</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {completedOrders.map((order: any) => (
+                        <tr key={order._id} className="border-b">
+                          <td className="py-3 font-medium">{order.orderId}</td>
+                          <td className="py-3">{order.items}</td>
+                          <td className="py-3">{order.prepTime}m</td>
+                          <td className="py-3">{order.assignedRider ? order.assignedRider.name : "N/A"}</td>
+                          <td className="py-3">{new Date(order.updatedAt).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {completedOrders.length === 0 && (
+                    <div className="text-center py-8 text-gray-500">No completed orders yet.</div>
                   )}
                 </div>
               </CardContent>
@@ -814,6 +947,7 @@ function RestaurantDashboard() {
 function RiderDashboard() {
   const [assignedOrder, setAssignedOrder] = useState(null)
   const [riderStatus, setRiderStatus] = useState("available")
+  const [completedRides, setCompletedRides] = useState([])
 
   const fetchAssignedOrder = async () => {
     try {
@@ -824,8 +958,27 @@ function RiderDashboard() {
           Authorization: `Bearer ${token}`,
         },
       })
-      const data = await response.json()
-      if (response.ok && data) {
+
+      // Check if response is HTML (error page)
+      const text = await response.text()
+      let data
+      try {
+        data = JSON.parse(text)
+      } catch (e) {
+        console.error("Server returned non-JSON response:", text)
+        setAssignedOrder(null)
+        setRiderStatus("available")
+        return
+      }
+
+      if (!response.ok) {
+        console.error("API Error:", data.message || "Failed to fetch assigned order")
+        setAssignedOrder(null)
+        setRiderStatus("available")
+        return
+      }
+
+      if (data) {
         setAssignedOrder(data)
         setRiderStatus("busy")
       } else {
@@ -834,6 +987,41 @@ function RiderDashboard() {
       }
     } catch (error) {
       console.error("Error fetching assigned order:", error)
+      setAssignedOrder(null)
+      setRiderStatus("available")
+    }
+  }
+
+  const fetchCompletedRides = async () => {
+    try {
+      const token = localStorage.getItem("token")
+      const riderId = localStorage.getItem("userId")
+      const response = await fetch(`http://localhost:5000/api/riders/${riderId}/completed-rides`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      // Check if response is HTML (error page)
+      const text = await response.text()
+      let data
+      try {
+        data = JSON.parse(text)
+      } catch (e) {
+        setCompletedRides([])
+        return
+      }
+
+      if (!response.ok) {
+        console.error("API Error:", data.message || "Failed to fetch completed rides")
+        setCompletedRides([])
+        return
+      }
+
+      setCompletedRides(data)
+    } catch (error) {
+      console.error("Error fetching completed rides:", error)
+      setCompletedRides([])
     }
   }
 
@@ -851,17 +1039,33 @@ function RiderDashboard() {
         body: JSON.stringify({ status: newStatus }),
       })
 
-      if (response.ok) {
-        if (newStatus === "DELIVERED") {
-          setAssignedOrder(null)
-          setRiderStatus("available")
-        } else {
-          fetchAssignedOrder()
-        }
-        alert(`Order status updated to ${newStatus}`)
+      // Check if response is HTML (error page)
+      const text = await response.text()
+      let data
+      try {
+        data = JSON.parse(text)
+      } catch (e) {
+        console.error("Server returned non-JSON response:", text)
+        alert("Server error. Please try again.")
+        return
       }
+
+      if (!response.ok) {
+        console.error("API Error:", data.message || "Failed to update order status")
+        alert(data.message || "Failed to update order status. Please try again.")
+        return
+      }
+
+      if (newStatus === "DELIVERED") {
+        setAssignedOrder(null)
+        setRiderStatus("available")
+      } else {
+        fetchAssignedOrder()
+      }
+      alert(`Order status updated to ${newStatus}`)
     } catch (error) {
       console.error("Error updating order status:", error)
+      alert("Failed to update order status. Please try again.")
     }
   }
 
@@ -882,9 +1086,13 @@ function RiderDashboard() {
 
   React.useEffect(() => {
     fetchAssignedOrder()
+    fetchCompletedRides()
 
     // Poll for updates every 10 seconds
-    const interval = setInterval(fetchAssignedOrder, 10000)
+    const interval = setInterval(() => {
+      fetchAssignedOrder()
+      fetchCompletedRides()
+    }, 10000)
 
     return () => clearInterval(interval)
   }, [])
@@ -916,104 +1124,140 @@ function RiderDashboard() {
       </div>
 
       <div className="container mx-auto px-4 py-8">
-        {assignedOrder ? (
-          <div className="max-w-2xl mx-auto">
+        <div className="grid lg:grid-cols-2 gap-8">
+          <div>
+            {assignedOrder ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Current Assignment</CardTitle>
+                  <CardDescription>Order details and status management</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Order ID</Label>
+                      <div className="text-lg font-semibold">{(assignedOrder as any).orderId}</div>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Items</Label>
+                      <div className="text-lg">{(assignedOrder as any).items}</div>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Prep Time</Label>
+                      <div className="text-lg">{(assignedOrder as any).prepTime} minutes</div>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Restaurant</Label>
+                      <div className="text-lg">{(assignedOrder as any).restaurant?.restaurantName || "N/A"}</div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium text-gray-500 mb-2 block">Order Progress</Label>
+                    <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
+                      <div
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${getStatusProgress((assignedOrder as any).status)}%` }}
+                      ></div>
+                    </div>
+                    <div className="flex justify-between text-sm text-gray-600">
+                      <span className={(assignedOrder as any).status === "PREP" ? "font-semibold text-blue-600" : ""}>
+                        Preparing
+                      </span>
+                      <span className={(assignedOrder as any).status === "PICKED" ? "font-semibold text-blue-600" : ""}>
+                        Picked Up
+                      </span>
+                      <span className={(assignedOrder as any).status === "ON_ROUTE" ? "font-semibold text-blue-600" : ""}>
+                        On Route
+                      </span>
+                      <span
+                        className={(assignedOrder as any).status === "DELIVERED" ? "font-semibold text-blue-600" : ""}
+                      >
+                        Delivered
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <span className="font-medium">Current Status:</span>
+                      <Badge
+                        className={`${
+                          (assignedOrder as any).status === "PREP"
+                            ? "bg-yellow-100 text-yellow-800"
+                            : (assignedOrder as any).status === "PICKED"
+                              ? "bg-blue-100 text-blue-800"
+                              : (assignedOrder as any).status === "ON_ROUTE"
+                                ? "bg-purple-100 text-purple-800"
+                                : "bg-green-100 text-green-800"
+                        }`}
+                      >
+                        {(assignedOrder as any).status}
+                      </Badge>
+                    </div>
+
+                    {(assignedOrder as any).status !== "DELIVERED" && (
+                      <Button
+                        onClick={() => updateOrderStatus(getNextStatus((assignedOrder as any).status))}
+                        className="w-full"
+                        size="lg"
+                      >
+                        Mark as {getNextStatus((assignedOrder as any).status)}
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardContent className="py-12">
+                  <Bike className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">No Active Orders</h3>
+                  <p className="text-gray-600 mb-6">
+                    You're currently available for new deliveries. Orders will appear here when assigned.
+                  </p>
+                  <Badge className="bg-green-100 text-green-800">Available for Delivery</Badge>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          <div>
             <Card>
               <CardHeader>
-                <CardTitle>Current Assignment</CardTitle>
-                <CardDescription>Order details and status management</CardDescription>
+                <CardTitle>Completed Rides History</CardTitle>
+                <CardDescription>View your past deliveries</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium text-gray-500">Order ID</Label>
-                    <div className="text-lg font-semibold">{(assignedOrder as any).orderId}</div>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-gray-500">Items</Label>
-                    <div className="text-lg">{(assignedOrder as any).items}</div>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-gray-500">Prep Time</Label>
-                    <div className="text-lg">{(assignedOrder as any).prepTime} minutes</div>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-gray-500">Restaurant</Label>
-                    <div className="text-lg">{(assignedOrder as any).restaurant?.restaurantName || "N/A"}</div>
-                  </div>
-                </div>
-
-                <div>
-                  <Label className="text-sm font-medium text-gray-500 mb-2 block">Order Progress</Label>
-                  <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
-                    <div
-                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${getStatusProgress((assignedOrder as any).status)}%` }}
-                    ></div>
-                  </div>
-                  <div className="flex justify-between text-sm text-gray-600">
-                    <span className={(assignedOrder as any).status === "PREP" ? "font-semibold text-blue-600" : ""}>
-                      Preparing
-                    </span>
-                    <span className={(assignedOrder as any).status === "PICKED" ? "font-semibold text-blue-600" : ""}>
-                      Picked Up
-                    </span>
-                    <span className={(assignedOrder as any).status === "ON_ROUTE" ? "font-semibold text-blue-600" : ""}>
-                      On Route
-                    </span>
-                    <span
-                      className={(assignedOrder as any).status === "DELIVERED" ? "font-semibold text-blue-600" : ""}
-                    >
-                      Delivered
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <span className="font-medium">Current Status:</span>
-                    <Badge
-                      className={`${
-                        (assignedOrder as any).status === "PREP"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : (assignedOrder as any).status === "PICKED"
-                            ? "bg-blue-100 text-blue-800"
-                            : (assignedOrder as any).status === "ON_ROUTE"
-                              ? "bg-purple-100 text-purple-800"
-                              : "bg-green-100 text-green-800"
-                      }`}
-                    >
-                      {(assignedOrder as any).status}
-                    </Badge>
-                  </div>
-
-                  {(assignedOrder as any).status !== "DELIVERED" && (
-                    <Button
-                      onClick={() => updateOrderStatus(getNextStatus((assignedOrder as any).status))}
-                      className="w-full"
-                      size="lg"
-                    >
-                      Mark as {getNextStatus((assignedOrder as any).status)}
-                    </Button>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2">Order ID</th>
+                        <th className="text-left py-2">Restaurant</th>
+                        <th className="text-left py-2">Items</th>
+                        <th className="text-left py-2">Completed At</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {completedRides.map((ride: any) => (
+                        <tr key={ride._id} className="border-b">
+                          <td className="py-3 font-medium">{ride.orderId}</td>
+                          <td className="py-3">{ride.restaurant?.restaurantName || "N/A"}</td>
+                          <td className="py-3">{ride.items}</td>
+                          <td className="py-3">{new Date(ride.updatedAt).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {completedRides.length === 0 && (
+                    <div className="text-center py-8 text-gray-500">No completed rides yet.</div>
                   )}
                 </div>
               </CardContent>
             </Card>
           </div>
-        ) : (
-          <div className="max-w-md mx-auto text-center">
-            <Card>
-              <CardContent className="py-12">
-                <Bike className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">No Active Orders</h3>
-                <p className="text-gray-600 mb-6">
-                  You're currently available for new deliveries. Orders will appear here when assigned.
-                </p>
-                <Badge className="bg-green-100 text-green-800">Available for Delivery</Badge>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   )
