@@ -10,6 +10,9 @@ A comprehensive MERN stack application for managing food delivery logistics with
 [Screencast from 2025-06-01 12-08-22.webm](https://github.com/user-attachments/assets/0ef9098c-8840-4439-adab-478c40186c88)
 
 
+https://github.com/user-attachments/assets/74a2ea03-b39c-479a-b1dc-91cfe9621031
+
+
 ## Features
 
 ### 🔐 Authentication System
