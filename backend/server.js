@@ -93,6 +93,11 @@ const orderSchema = new mongoose.Schema({
   restaurant: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant", required: true },
   assignedRider: { type: mongoose.Schema.Types.ObjectId, ref: "Rider", default: null },
   dispatchTime: Date,
+  deliveryLocation: {
+    lat: { type: Number, required: true },
+    lng: { type: Number, required: true },
+    address: { type: String, required: true }
+  }
 }, { timestamps: true })
 
 // Models
@@ -319,16 +324,21 @@ app.post("/api/orders", authenticateToken, async (req, res) => {
       return res.status(403).json({ message: "Access denied" })
     }
 
-    const { orderId, items, prepTime } = req.body
+    const { orderId, items, prepTime, deliveryLocation } = req.body
 
     // Validate required fields
-    if (!orderId || !items || !prepTime) {
-      return res.status(400).json({ message: "Order ID, items, and prep time are required" })
+    if (!orderId || !items || !prepTime || !deliveryLocation) {
+      return res.status(400).json({ message: "Order ID, items, prep time, and delivery location are required" })
     }
 
     // Validate prep time
     if (prepTime < 1 || prepTime > 120) {
       return res.status(400).json({ message: "Prep time must be between 1 and 120 minutes" })
+    }
+
+    // Validate delivery location
+    if (!deliveryLocation.lat || !deliveryLocation.lng || !deliveryLocation.address) {
+      return res.status(400).json({ message: "Invalid delivery location" })
     }
 
     // Find restaurant
@@ -348,7 +358,8 @@ app.post("/api/orders", authenticateToken, async (req, res) => {
       orderId,
       items,
       prepTime: Number.parseInt(prepTime),
-      restaurant: restaurant._id
+      restaurant: restaurant._id,
+      deliveryLocation
     })
 
     await order.save()

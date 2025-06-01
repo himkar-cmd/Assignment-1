@@ -12,6 +12,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Store, Bike, Shield, Eye, EyeOff } from "lucide-react"
 import { io, Socket } from "socket.io-client"
+import DeliveryMap from "./components/DeliveryMap"
+
+interface Location {
+  lat: number
+  lng: number
+  address: string
+}
 
 export default function HomePage() {
   const [currentView, setCurrentView] = useState("landing")
@@ -604,7 +611,13 @@ function RestaurantDashboard() {
     orderId: "",
     items: "",
     prepTime: "",
+    deliveryLocation: {
+      lat: 0,
+      lng: 0,
+      address: ""
+    }
   })
+  const [showMap, setShowMap] = useState(false)
 
   const fetchOrders = async () => {
     try {
@@ -706,7 +719,7 @@ function RestaurantDashboard() {
         return
       }
 
-      setNewOrder({ orderId: "", items: "", prepTime: "" })
+      setNewOrder({ orderId: "", items: "", prepTime: "", deliveryLocation: { lat: 0, lng: 0, address: "" } })
       fetchOrders()
       toast.success("Order added successfully!")
     } catch (error) {
@@ -838,6 +851,24 @@ function RestaurantDashboard() {
                       required
                     />
                   </div>
+                  <div className="space-y-2">
+                    <Label>Delivery Location</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={newOrder.deliveryLocation.address}
+                        placeholder="Enter delivery address"
+                        readOnly
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setShowMap(true)}
+                      >
+                        Select on Map
+                      </Button>
+                    </div>
+                  </div>
                   <Button type="submit" className="w-full">
                     Add Order
                   </Button>
@@ -942,6 +973,40 @@ function RestaurantDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Map Modal */}
+      {showMap && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">Select Delivery Location</h2>
+              <Button
+                variant="ghost"
+                onClick={() => setShowMap(false)}
+              >
+                Close
+              </Button>
+            </div>
+            <div className="h-[500px] w-full">
+              <DeliveryMap
+                pickupLocation={{
+                  lat: 0, // Replace with restaurant's actual location
+                  lng: 0,
+                  address: "Restaurant Location"
+                }}
+                deliveryLocation={newOrder.deliveryLocation}
+                onLocationSelect={(location: Location) => {
+                  setNewOrder({
+                    ...newOrder,
+                    deliveryLocation: location
+                  })
+                  setShowMap(false)
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -950,6 +1015,7 @@ function RiderDashboard() {
   const [assignedOrder, setAssignedOrder] = useState(null)
   const [riderStatus, setRiderStatus] = useState("available")
   const [completedRides, setCompletedRides] = useState([])
+  const [showMap, setShowMap] = useState(false)
 
   const fetchAssignedOrder = async () => {
     try {
@@ -1155,6 +1221,24 @@ function RiderDashboard() {
                   </div>
 
                   <div>
+                    <Label className="text-sm font-medium text-gray-500 mb-2 block">Delivery Location</Label>
+                    <div className="flex gap-2 mb-2">
+                      <Input
+                        value={(assignedOrder as any).deliveryLocation?.address || "No address provided"}
+                        readOnly
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setShowMap(true)}
+                      >
+                        View on Map
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div>
                     <Label className="text-sm font-medium text-gray-500 mb-2 block">Order Progress</Label>
                     <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
                       <div
@@ -1261,6 +1345,38 @@ function RiderDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Map Modal */}
+      {showMap && assignedOrder && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">Delivery Route</h2>
+              <Button
+                variant="ghost"
+                onClick={() => setShowMap(false)}
+              >
+                Close
+              </Button>
+            </div>
+            <div className="h-[500px] w-full">
+              <DeliveryMap
+                pickupLocation={{
+                  lat: (assignedOrder as any).restaurant?.location?.lat || 0,
+                  lng: (assignedOrder as any).restaurant?.location?.lng || 0,
+                  address: (assignedOrder as any).restaurant?.restaurantName || "Restaurant Location"
+                }}
+                deliveryLocation={(assignedOrder as any).deliveryLocation || {
+                  lat: 0,
+                  lng: 0,
+                  address: "Delivery Location"
+                }}
+                isRider={true}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
